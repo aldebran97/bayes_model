@@ -22,14 +22,16 @@ def filter_words(words: list):
     for word in words:
         word = re.sub(regex, '', word)
         word = word.strip()
-        if len(word) == 0:
-            continue
-        if word in ignore_list:
-            continue
         ignore = False
+        if len(word) == 0:
+            ignore = True
+        if word in ignore_list:
+            ignore = True
         for ig in ignore_list:
             if word.startswith(ig):
                 ignore = True
+        if ignore:
+            continue
         rlt.append(word)
     return rlt
 
@@ -87,8 +89,7 @@ class Bayes():
             print('current_accuracy :%s\n' % max_accuracy)
             try:
                 return self.predict_one(x_predict, max_accuracy)
-            except Exception as e:
-                print(e)
+            except ZeroDivisionError as e:
                 max_accuracy = max_accuracy - 1
                 continue
 
