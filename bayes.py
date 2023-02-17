@@ -154,21 +154,33 @@ class NaiveBayesTextClassification():
                 lambda: {'σ': numpy.zeros(shape=(features_count,)),  # 标准差
                          'μ': numpy.zeros(shape=(features_count,))})  # 期望
 
+            min_o = 1e+8
+            max_o = 0
+
             for class_name in self.articles.class_name_articles_map:
                 articles = self.articles.class_name_articles_map[class_name]
                 array = numpy.zeros(shape=(features_count, len(articles)))
                 for i, a in enumerate(articles):
                     array[:, i] = a.feature.T
-                max_o = 0
+
                 for i in range(features_count):
                     u = numpy.average(array[i])  # 期望
                     o = numpy.std(array[i])  # 标准差
-                    if o > max_o: max_o = o
+                    if o < min_o and o != 0:
+                        min_o = o
+                    if o > max_o:
+                        max_o = o
                     self.data_after_train[class_name]['μ'][i] = u  # 期望
                     self.data_after_train[class_name]['σ'][i] = o  # 标准差
+
+            # print('min_o', min_o)
+            # print('max_o', max_o)
+
+            # 0标准差处理，不能太小，会导致0概率问题
+            for class_name in self.articles.class_name_articles_map:
                 for i in range(features_count):
                     if self.data_after_train[class_name]['σ'][i] == 0:
-                        self.data_after_train[class_name]['σ'][i] = max_o * 2
+                        self.data_after_train[class_name]['σ'][i] = (min_o + max_o) / 2
                         pass
 
             # print(self.train_data)
@@ -201,6 +213,7 @@ class NaiveBayesTextClassification():
                             math.sqrt(2 * math.pi) * o)
             pass
 
+        # print(list(result.values()))
         s = numpy.sum(numpy.array(list(result.values())))
         for class_name in result:
             result[class_name] = result[class_name] / s
