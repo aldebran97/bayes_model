@@ -176,11 +176,13 @@ class NaiveBayesTextClassification():
             # print('min_o', min_o)
             # print('max_o', max_o)
 
+            a, b = 5, 1
+
             # 0标准差处理，不能太小，会导致0概率问题
             for class_name in self.articles.class_name_articles_map:
                 for i in range(features_count):
                     if self.data_after_train[class_name]['σ'][i] == 0:
-                        self.data_after_train[class_name]['σ'][i] = (min_o + max_o) / 2
+                        self.data_after_train[class_name]['σ'][i] = (b * min_o + a * max_o) / (a + b)
                         pass
 
             # print(self.train_data)
