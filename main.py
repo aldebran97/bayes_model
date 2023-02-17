@@ -26,6 +26,7 @@ def try_gaussian():
     model.train()
     print(model.predict(Article(uuid4(), '34850285426240692806A', None)))
     print(model.predict(Article(uuid4(), 'defrtjhrtjA', None)))
+    print(model.predict_label(Article(uuid4(), 'defrtjhrtjA', None)))
     pass
 
 

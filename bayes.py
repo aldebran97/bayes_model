@@ -79,7 +79,6 @@ class Articles():
         self.feature_words = []
         self.feature_words_set = set()
         self.filter_interval = filter_interval
-        self.max_count = 0
         pass
 
     def add_one(self, article: Article):
@@ -89,20 +88,18 @@ class Articles():
             if word not in self.feature_words_set:
                 self.feature_words_set.add(word)
                 self.feature_words.append(word)
-            count = article.word_count_map[word].count
-            if count > self.max_count:
-                self.max_count = count
-            pass
+        articles_count = len(self.id_article_map)
+        if articles_count % self.filter_interval == 0:
+            self.filter_disturb_items()
+        pass
 
     def add_mul(self, articles: Iterator):
         for article in articles:
             self.add_one(article)
 
     # TODO 过滤干扰分类的常用词
-    def filter_disturb_items(self, rate=0.5):
-        if len(self.id_article_map) != 0 and len(self.id_article_map) % self.filter_interval == 0:
-            # TODO 过滤方法
-            pass
+    def filter_disturb_items(self):
+        pass
 
 
 # 朴素贝叶斯文本分类模型
@@ -116,7 +113,7 @@ class NaiveBayesTextClassification():
         self.class_name_probability = None
         self.method = method
         self.articles = Articles(filter_interval)
-        self.train_data = None
+        self.data_after_train = None
         pass
 
     def fit(self, article: Article):
@@ -126,47 +123,52 @@ class NaiveBayesTextClassification():
         self.articles.add_mul(articles)
 
     def train(self):
+
         # 计算特征向量
         for article in self.articles.id_article_map.values():
             article.get_feature(self.articles.feature_words, True)
+
         # 计算先验概率
-        if self.class_name_probability is None:
-            self.class_name_probability = dict()
-            for class_name in self.articles.class_name_articles_map.keys():
-                self.class_name_probability[class_name] = len(self.articles.class_name_articles_map[class_name]) / len(
-                    self.articles.id_article_map)
+        self.class_name_probability = dict()
+        class_count = len(self.articles.class_name_articles_map)
+        all_articles_count = len(self.articles.id_article_map)
+        for class_name in self.articles.class_name_articles_map:
+            class_articles_count = len(self.articles.class_name_articles_map[class_name])
+            self.class_name_probability[class_name] = (class_articles_count + 1) / \
+                                                      (all_articles_count + 1 * class_count)  # 拉普拉斯平滑
         # print(self.class_name_probability)
+
+        features_count = len(self.articles.feature_words)
         # 条件概率所需数据
         if self.method == 'Bernoulli':
-            self.train_data = defaultdict(
-                lambda: numpy.zeros(shape=(len(self.articles.feature_words),)))
-            for class_name in self.articles.class_name_articles_map.keys():
+            self.data_after_train = defaultdict(lambda: numpy.zeros(shape=(features_count,)))
+            for class_name in self.articles.class_name_articles_map:
                 for a in self.articles.class_name_articles_map[class_name]:
-                    self.train_data[class_name] += a.feature
-                self.train_data[class_name] = (self.train_data[class_name] + 1) / \
-                                              (numpy.sum(self.train_data[class_name])
-                                               + 1 * len(self.articles.feature_words))  # 拉普拉斯平滑
+                    self.data_after_train[class_name] += a.feature
+                self.data_after_train[class_name] = (self.data_after_train[class_name] + 1) / \
+                                                    (numpy.sum(self.data_after_train[class_name])
+                                                     + 1 * features_count)  # 拉普拉斯平滑
             pass
         elif self.method == 'Gaussian':
-            self.train_data = defaultdict(
-                lambda: {'σ': numpy.zeros(shape=(len(self.articles.feature_words),)),  # 标准差
-                         'μ': numpy.zeros(shape=(len(self.articles.feature_words),))})  # 期望
+            self.data_after_train = defaultdict(
+                lambda: {'σ': numpy.zeros(shape=(features_count,)),  # 标准差
+                         'μ': numpy.zeros(shape=(features_count,))})  # 期望
 
             for class_name in self.articles.class_name_articles_map:
                 articles = self.articles.class_name_articles_map[class_name]
-                array = numpy.zeros(shape=(len(self.articles.feature_words), len(articles)))
+                array = numpy.zeros(shape=(features_count, len(articles)))
                 for i, a in enumerate(articles):
                     array[:, i] = a.feature.T
                 max_o = 0
-                for i in range(len(self.articles.feature_words)):
+                for i in range(features_count):
                     u = numpy.average(array[i])  # 期望
                     o = numpy.std(array[i])  # 标准差
                     if o > max_o: max_o = o
-                    self.train_data[class_name]['μ'][i] = u  # 期望
-                    self.train_data[class_name]['σ'][i] = o  # 标准差
-                for i in range(len(self.articles.feature_words)):
-                    if self.train_data[class_name]['σ'][i] == 0:
-                        self.train_data[class_name]['σ'][i] = max_o * 2
+                    self.data_after_train[class_name]['μ'][i] = u  # 期望
+                    self.data_after_train[class_name]['σ'][i] = o  # 标准差
+                for i in range(features_count):
+                    if self.data_after_train[class_name]['σ'][i] == 0:
+                        self.data_after_train[class_name]['σ'][i] = max_o * 2
                         pass
 
             # print(self.train_data)
@@ -184,17 +186,17 @@ class NaiveBayesTextClassification():
         if self.method == 'Bernoulli':
             for i in range(feature.shape[0]):
                 x_i = 0 if feature[i] == 0 else 1
-                for class_name in self.train_data:
-                    p_1 = self.train_data[class_name][i]
+                for class_name in self.data_after_train:
+                    p_1 = self.data_after_train[class_name][i]
                     result[class_name] *= x_i * p_1 + (1 - x_i) * (1 - p_1)
             # print(result)
 
         elif self.method == 'Gaussian':
             for i in range(feature.shape[0]):
                 x_i = feature[i]
-                for class_name in self.train_data:
-                    u = self.train_data[class_name]['μ'][i]
-                    o = self.train_data[class_name]['σ'][i]
+                for class_name in self.data_after_train:
+                    u = self.data_after_train[class_name]['μ'][i]
+                    o = self.data_after_train[class_name]['σ'][i]
                     result[class_name] *= math.exp(-math.pow(x_i - u, 2) / (2 * math.pow(o, 2))) / (
                             math.sqrt(2 * math.pi) * o)
             pass
@@ -206,5 +208,14 @@ class NaiveBayesTextClassification():
         return result
         pass
 
-    def predict_class(self, article: Article):
-        pass
+    def predict_label(self, article: Article):
+        result = self.predict(article)
+        result_class_name = None
+        result_class_p = -1
+        for class_name in result:
+            class_p = result[class_name]
+            if class_p > result_class_p:
+                result_class_p = class_p
+                result_class_name = class_name
+            pass
+        return result_class_name
